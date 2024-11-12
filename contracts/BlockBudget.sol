@@ -6,20 +6,22 @@
  * @dev Serves as the central hub for user interaction and financial management
  */
 contract BlockBudget {
+    
     /* ========== USER PROFILE MANAGEMENT ========== */
     
     /**
-     * @notice Functions for managing user accounts and profiles
-     * @dev Required parameters for profile management:
-     * - userRegistration: Create new user accounts
+     * @notice Manages user accounts and profiles
+     * @dev Required parameters:
+     * 
+     * - userRegistration: Create new user accounts with:
      *   - username
-     *   - email (optional, hashed)
+     *   - optional hashed email
      *   - walletAddress
      *   - preferredCurrency
      *   - notificationPreferences
      * 
      * - profileConfiguration:
-     *   - privacySettings: Enum (PUBLIC, PRIVATE, FRIENDS_ONLY)
+     *   - privacySettings (Enum): PUBLIC, PRIVATE, FRIENDS_ONLY
      *   - displayPreferences
      *   - languagePreference
      *   - timeZone
@@ -34,91 +36,74 @@ contract BlockBudget {
     /* ========== BUDGET MANAGEMENT ========== */
 
     /**
-     * @notice Functions for creating and managing budgets
-     * @dev Include functions for:
-     * - createBudget: Set up new budget plans
-     *   - timeframe
-     *   - categories
-     *   - limits
+     * @notice Manages budget creation and tracking
+     * @dev Functionalities:
+     * 
+     * - createBudget: Establish new budget plans including:
+     *   - timeframe, categories, and limits
      * 
      * - budgetTracking:
-     *   - trackSpending
-     *   - categoryAllocations
-     *   - limitAdjustments
+     *   - trackSpending: Real-time monitoring
+     *   - categoryAllocations: Assign spending categories
+     *   - limitAdjustments: Update category limits
      * 
      * - budgetAnalysis:
-     *   - spendingPatterns
-     *   - categoryBreakdown
-     *   - trendAnalysis
-     *   - forecastGeneration
+     *   - spendingPatterns, categoryBreakdown, trendAnalysis, and forecastGeneration
      */
 
     /* ========== EXPENSE TRACKING ========== */
 
     /**
-     * @notice Functions for expense management
-     * @dev Include functions for:
-     * - recordExpense: Log new expenses
-     *   - amount
-     *   - category
-     *   - date
-     *   - description
-     *   - attachments
+     * @notice Handles expense management
+     * @dev Functionalities:
+     * 
+     * - recordExpense: Logs expenses with:
+     *   - amount, category, date, description, and attachments
      * 
      * - expenseCategories:
-     *   - createCategory
-     *   - modifyCategory
-     *   - mergeCategories
+     *   - createCategory, modifyCategory, mergeCategories
      * 
      * - recurringExpenses:
-     *   - setupRecurring
-     *   - modifyRecurring
-     *   - cancelRecurring
+     *   - setupRecurring, modifyRecurring, cancelRecurring
      */
 
     /* ========== INCOME MANAGEMENT ========== */
 
     /**
-     * @notice Functions for tracking and managing income
-     * @dev Include functions for:
-     * - recordIncome: Log income entries
-     *   - source
-     *   - amount
-     *   - frequency
+     * @notice Manages income tracking and categorization
+     * @dev Functionalities:
+     * 
+     * - recordIncome: Logs income entries with:
+     *   - source, amount, and frequency
      * 
      * - incomeCategories:
-     *   - salaryIncome
-     *   - investmentIncome
-     *   - passiveIncome
+     *   - salaryIncome, investmentIncome, passiveIncome
      * 
      * - recurringIncome:
-     *   - scheduleRecurring
-     *   - trackPayments
-     *   - forecastIncome
+     *   - scheduleRecurring, trackPayments, forecastIncome
      */
 
     /* ========== FINANCIAL GOALS INTEGRATION ========== */
 
     /**
-     * @notice Functions for managing financial goals
-     * @dev Include functions for:
-     * - linkGoalBasedSavings: Connect to GoalBasedLib
-     * - linkTimeLockedSavings: Connect to TimeLockedLib
-     * - linkContributions: Connect to ContributionLib
-     * - trackGoalProgress: Monitor all savings goals
-     * - aggregatePerformance: Combine goal metrics
+     * @notice Integrates financial goals management
+     * @dev Functionalities:
+     * 
+     * - linkGoalBasedSavings, linkTimeLockedSavings, linkContributions
+     * - trackGoalProgress: Monitor goal achievement
+     * - aggregatePerformance: Summarize overall goal metrics
      */
 
-     
     /* ========== ADMIN FUNCTIONS ========== */
 
     /**
-     * @notice Administrative functions
-     * @dev Include functions for:
+     * @notice Administrative controls
+     * @dev Functionalities:
+     * 
      * - systemMaintenance: Routine updates
-     * - userManagement: Account administration
-     * - troubleshooting: Issue resolution
-     * - systemUpgrades: Contract improvements
-     * - emergencyControls: Crisis management
+     * - userManagement: Account-level actions
+     * - troubleshooting: Diagnose and resolve issues
+     * - systemUpgrades: Enhance contract functionality
+     * - emergencyControls: Crisis management procedures
      */
 }

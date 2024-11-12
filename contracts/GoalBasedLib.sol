@@ -6,127 +6,84 @@
  * @dev Implements functionality for personal and group savings goals
  */
 contract GoalBasedLib {
+    
     /* ========== GOAL CREATION AND SETUP ========== */
-
-    /**
-     * @notice Functions for creating and initializing savings goals
-     * @dev Required parameters for goal creation:
-     * - goalName: Name/description of the savings goal
-     * - targetAmount: Final amount to be saved
-     * - deadline: Timeline for achieving the goal
-     * - goalType: Enum (PERSONAL, GROUP, EDUCATIONAL, PURCHASE, INVESTMENT)
-     * - savingFrequency: Enum (DAILY, WEEKLY, MONTHLY)
-     * - minContributionAmount: Minimum amount per contribution
-     * - isFlexible: Boolean for flexible vs. fixed contributions
-     * - autoContribute: Boolean for automatic contributions
-     * - milestones: Array of milestone percentages and rewards
-     * - penaltyRate: Early withdrawal penalty percentage
-     */
-
+    
+    // Define functions for goal creation and initialization
+    // Parameters: goalName, targetAmount, deadline, goalType, savingFrequency, minContributionAmount, 
+    //             isFlexible, autoContribute, milestones, penaltyRate
+    
     /* ========== MILESTONE MANAGEMENT ========== */
-
-    /**
-     * @notice Functions for managing savings milestones
-     * @dev Include functions for:
-     * - defineMilestone: Create new milestone targets
-     * - updateMilestone: Modify existing milestone parameters
-     * - trackMilestoneProgress: Monitor progress towards milestones
-     * - validateMilestone: Verify milestone achievement
-     * - distributeMilestoneRewards: Process reward distribution
-     * - getMilestoneHistory: View completed milestones
-     */
-
+    
+    // Functions for managing milestones:
+    // - defineMilestone: Set up milestones
+    // - updateMilestone: Edit milestone details
+    // - trackMilestoneProgress: Monitor milestone progress
+    // - validateMilestone: Verify completion
+    // - distributeMilestoneRewards: Pay out rewards for achieved milestones
+    // - getMilestoneHistory: View past milestones achieved
+    
     /* ========== PROGRESS TRACKING ========== */
-
-    /**
-     * @notice Functions for monitoring savings progress
-     * @dev Include functions for:
-     * - calculateProgress: Compute percentage completion
-     * - generateProgressReport: Create detailed progress summary
-     * - projectCompletion: Estimate completion date
-     * - checkMilestoneStatus: Verify milestone achievements
-     * - trackSavingRate: Monitor saving speed
-     * - compareToSchedule: Check if on track with timeline
-     */
-
-    /* ========== REWARD SYSTEM ========== */  //if needed
-
-    /**
-     * @notice Functions for managing achievement rewards
-     * @dev Include functions for:
-     * - defineRewards: Set up reward structure
-     * - calculateReward: Compute earned rewards
-     * - distributeRewards: Process reward payments
-     * - modifyRewardRules: Update reward parameters
-     * - checkRewardEligibility: Verify reward qualification
-     * - getRewardHistory: View distributed rewards
-     */
-
+    
+    // Functions for tracking goal progress:
+    // - calculateProgress: Calculate percentage of goal completed
+    // - generateProgressReport: Generate progress details
+    // - projectCompletion: Predict end date
+    // - checkMilestoneStatus: Validate milestone achievements
+    // - trackSavingRate: Monitor saving speed
+    // - compareToSchedule: Assess progress relative to the timeline
+    
+    
     /* ========== GOAL COMPLETION ========== */
-
-    /**
-     * @notice Functions for handling goal achievement
-     * @dev Include functions for:
-     * - verifyCompletion: Check if goal is achieved
-     * - processCompletion: Handle goal completion
-     * - extendGoal: Modify goal timeline
-     * - increaseTarget: Adjust target amount
-     * - finalizeGoal: Close completed goal
-     * - generateCompletionReport: Summary of achievement
-     */
-
+    
+    // Functions for goal completion handling:
+    // - verifyCompletion: Confirm if the goal is reached
+    // - processCompletion: Mark goal as complete
+    // - extendGoal: Extend goal deadline
+    // - increaseTarget: Raise target amount
+    // - finalizeGoal: Close goal upon completion
+    // - generateCompletionReport: Provide completion summary
+    
     /* ========== WITHDRAWAL MANAGEMENT ========== */
-
-    /**
-     * @notice Functions for managing fund withdrawals
-     * @dev Include functions for:
-     * - regularWithdrawal: Process planned withdrawals
-     * - emergencyWithdrawal: Handle urgent withdrawals
-     * - calculatePenalty: Compute early withdrawal fees
-     * - approveWithdrawal: Validate withdrawal request
-     * - processWithdrawal: Execute fund transfer
-     * - getWithdrawalHistory: View past withdrawals
-     */
-
+    
+    // Functions for withdrawal handling:
+    // - regularWithdrawal: Manage standard withdrawals
+    // - emergencyWithdrawal: Handle urgent withdrawals
+    // - calculatePenalty: Determine fees for early withdrawal
+    // - approveWithdrawal: Validate withdrawal request
+    // - processWithdrawal: Transfer funds
+    // - getWithdrawalHistory: Record of past withdrawals
+    
     /* ========== EMERGENCY HANDLING ========== */
-
-    /**
-     * @notice Functions for emergency situations
-     * @dev Include functions for:
-     * - modifyGoal: Update goal parameters
-     * - freezeGoal: Temporarily suspend goal
-     * - cancelGoal: Terminate goal early
-     * - emergencyWithdraw: Process urgent withdrawals
-     * - updatePenalties: Modify penalty structure
-     * - handleDisputes: Resolve issues
-     */
-
+    
+    // Functions for emergency operations:
+    // - modifyGoal: Adjust goal details
+    // - freezeGoal: Pause goal temporarily
+    // - cancelGoal: End goal early
+    // - emergencyWithdraw: Immediate fund withdrawal
+    // - updatePenalties: Edit penalty rates
+    // - handleDisputes: Resolve conflicts
+    
     /* ========== VIEW FUNCTIONS ========== */
-
-    /**
-     * @notice Read-only functions for accessing goal data
-     * @dev Include functions for:
-     * - getGoalDetails: Retrieve goal configuration
-     * - getProgress: View current progress
-     * - getMilestones: List all milestones
-     * - getContributionHistory: View past contributions
-     * - calculateProjections: Estimate future progress
-     * - getRewardStatus: Check available rewards
-     */
-
+    
+    // Read-only functions for goal information access:
+    // - getGoalDetails: Retrieve goal configuration
+    // - getProgress: View current goal status
+    // - getMilestones: List all milestones
+    // - getContributionHistory: Track contributions
+    // - calculateProjections: Predict future progress
+    // - getRewardStatus: Check available rewards
+    
     /* ========== EVENTS ========== */
-
-    /**
-     * @notice Events to be emitted for important operations
-     * @dev Should include events for:
-     * - GoalCreated: New goal initiation
-     * - ContributionMade: New contribution received
-     * - MilestoneAchieved: Milestone completion
-     * - RewardDistributed: Reward payment
-     * - GoalModified: Parameter updates
-     * - WithdrawalProcessed: Fund withdrawal
-     * - GoalCompleted: Target achievement
-     * - EmergencyAction: Emergency operations
-     */
+    
+    // Events to signal important actions:
+    // - GoalCreated: New goal is initiated
+    // - ContributionMade: New contribution is received
+    // - MilestoneAchieved: Milestone completed
+    // - RewardDistributed: Reward is paid
+    // - GoalModified: Goal parameters changed
+    // - WithdrawalProcessed: Funds withdrawn
+    // - GoalCompleted: Goal reached
+    // - EmergencyAction: Emergency operation performed
 
 }
