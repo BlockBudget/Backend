@@ -2,85 +2,272 @@
 pragma solidity ^0.8.26;
 
 /**
- * @title TimeLockedLib
- * @notice Pseudocode steps for implementing a time-locked savings contract with interest mechanisms
+ * @title TimeLockedSavingsLib
+ * @notice Library implementing time-locked savings functionality with interest mechanisms
  */
-contract TimeLockedLib {
+library TimeLockedSavingsLib {
     
-    /* ========== STEP 1: DEFINE DATA STRUCTURES ========== */
-    // Define enums for account and interest types:
-    // 1. Create an AccountType enum with options like FIXED_TERM, FLEXIBLE_TERM, LADDER_TERM
-    // 2. Create an InterestType enum with options like FIXED, VARIABLE, COMPOUND
+    enum AccountType { FIXED_TERM, FLEXIBLE_TERM, LADDER_TERM }
+    
+    enum InterestType { FIXED, VARIABLE, COMPOUND }
+    
+    struct Account {
+        uint256 balance;
+        uint256 lastInterestCalculation;
+        uint256 accruedInterest;
+        uint256 interestRate;
+        uint256 lockEndTime;
+        uint256 createdAt;
+        AccountType accountType;
+        InterestType interestType;
+        bool isActive;
+    }
 
-    // Define the Account struct:
-    // 1. Add fields for account details, such as balances, interest rates, and status flags
-    // 2. Arrange fields for gas optimization where possible
-    // 3. Include flags for account status, lock duration, and accrued interest
-
-    // Create state mappings for account management:
-    // 1. Map user addresses to Account structs: mapping(address => Account)
-    // 2. Map addresses to an array of deposit amounts: mapping(address => uint256[])
-    // 3. Map addresses to an array of withdrawal amounts: mapping(address => uint256[])
-    // 4. Map addresses to cumulative interest earned: mapping(address => uint256)
-
-    /* ========== STEP 3: IMPLEMENT EVENTS ========== */
-    // Define required events for contract interaction tracking:
-    // 1. Emit AccountCreated event upon account creation
-    // 2. Emit DepositReceived event upon each deposit
-    // 3. Emit InterestPaid event during interest distribution
-    // 4. Emit WithdrawalProcessed event upon each successful withdrawal
-    // 5. Emit LockModified event whenever lock periods are updated
-
-    /* ========== STEP 4: CORE FUNCTIONS ========== */
-    // Implement account creation logic:
-    // 1. Validate user inputs (e.g., minimum deposit amount)
-    // 2. Set initial parameters for the account
-    // 3. Calculate the interest rate based on account type and duration
-    // 4. Set a lock period for the account
-    // 5. Emit an AccountCreated event
-
-    // Implement deposit functionality:
-    // 1. Verify the account's status before accepting deposits
-    // 2. Validate the deposit amount and update the balance
-    // 3. Record the deposit in deposit history mapping
-    // 4. Emit a DepositReceived event
-
-    // Implement interest calculation method:
-    // 1. Calculate the time elapsed since the last interest distribution
-    // 2. Apply the appropriate interest calculation formula
-    // 3. Handle different interest types (fixed, variable, compound)
-    // 4. Update the last calculation time and store the earned interest
-
-    // Implement withdrawal system:
-    // 1. Check if the lock period has expired
-    // 2. Calculate any applicable penalties for early withdrawal
-    // 3. Validate the withdrawal amount
-    // 4. Transfer funds to the account owner and update balance
-    // 5. Emit a WithdrawalProcessed event
-
-    /* ========== STEP 5: AUXILIARY FUNCTIONS ========== */
-    // Implement time lock management:
-    // 1. Check the lock status of an account
-    // 2. Calculate the remaining lock time
-    // 3. Allow for extensions of lock periods
-    // 4. Update unlock dates based on new lock period
-
-    // Implement interest rate management:
-    // 1. Define a base rate calculation for interest
-    // 2. Set multipliers based on the duration of the lock period
-    // 3. Adjust rates based on account type
-    // 4. Allow for rate updates by the admin
-
-    // Implement penalty system for early withdrawals:
-    // 1. Define penalty rates for each type of account
-    // 2. Calculate penalty amounts based on the locked duration
-    // 3. Address any special cases (e.g., penalty waivers)
-    // 4. Deduct penalties before processing the withdrawal
-
-    /* ========== STEP 6: VIEW FUNCTIONS ========== */
-    // Implement getter functions for user and admin access:
-    // 1. Fetch account details such as balance, lock status, and accrued interest
-    // 2. Provide view access to interest earned
-    // 3. Check lock status of an account
-    // 4. Retrieve transaction history (deposits and withdrawals)
+    struct AccountStorage {
+        mapping(address => Account) accounts;
+        mapping(address => uint256[]) deposits;
+        mapping(address => uint256[]) withdrawals;
+        mapping(address => uint256) totalInterestEarned;
+    }
+    
+    event AccountCreated(
+        address indexed owner,
+        AccountType accountType,
+        InterestType interestType,
+        uint256 initialDeposit,
+        uint256 lockDuration
+    );
+    
+    event DepositReceived(
+        address indexed owner,
+        uint256 amount,
+        uint256 newBalance
+    );
+    
+    event InterestPaid(
+        address indexed owner,
+        uint256 amount,
+        uint256 timestamp
+    );
+    
+    event WithdrawalProcessed(
+        address indexed owner,
+        uint256 amount,
+        uint256 penalty
+    );
+    
+    event LockModified(
+        address indexed owner,
+        uint256 newLockEndTime
+    );
+    
+    uint256 private constant SECONDS_PER_YEAR = 365 days;
+    uint256 private constant BASE_RATE = 500; // 5% represented as basis points
+    uint256 private constant BASIS_POINTS = 10000;
+    
+    
+    function createAccount(
+        AccountStorage storage self,
+        address owner,
+        AccountType accountType,
+        InterestType interestType,
+        uint256 lockDuration,
+        uint256 initialDeposit
+    ) external returns (bool) {
+        require(initialDeposit > 0, "Invalid initial deposit");
+        require(!self.accounts[owner].isActive, "Account already exists");
+        
+        uint256 interestRate = _calculateInterestRate(accountType, lockDuration);
+        
+        self.accounts[owner] = Account({
+            balance: initialDeposit,
+            lastInterestCalculation: block.timestamp,
+            accruedInterest: 0,
+            interestRate: interestRate,
+            lockEndTime: block.timestamp + lockDuration,
+            createdAt: block.timestamp,
+            accountType: accountType,
+            interestType: interestType,
+            isActive: true
+        });
+        
+        self.deposits[owner].push(initialDeposit);
+        
+        emit AccountCreated(
+            owner,
+            accountType,
+            interestType,
+            initialDeposit,
+            lockDuration
+        );
+        
+        return true;
+    }
+    
+    function deposit(
+        AccountStorage storage self,
+        address owner,
+        uint256 amount
+    ) external returns (bool) {
+        require(self.accounts[owner].isActive, "Account not active");
+        require(amount > 0, "Invalid deposit amount");
+        
+        self.accounts[owner].balance += amount;
+        self.deposits[owner].push(amount);
+        
+        emit DepositReceived(owner, amount, self.accounts[owner].balance);
+        
+        return true;
+    }
+    
+    function calculateInterest(
+        AccountStorage storage self,
+        address owner
+    ) external returns (uint256) {
+        Account storage account = self.accounts[owner];
+        require(account.isActive, "Account not active");
+        
+        uint256 timeElapsed = block.timestamp - account.lastInterestCalculation;
+        uint256 interest;
+        
+        if (account.interestType == InterestType.COMPOUND) {
+            interest = _calculateCompoundInterest(
+                account.balance,
+                account.interestRate,
+                timeElapsed
+            );
+        } else {
+            interest = _calculateSimpleInterest(
+                account.balance,
+                account.interestRate,
+                timeElapsed
+            );
+        }
+        
+        account.accruedInterest += interest;
+        account.lastInterestCalculation = block.timestamp;
+        self.totalInterestEarned[owner] += interest;
+        
+        emit InterestPaid(owner, interest, block.timestamp);
+        
+        return interest;
+    }
+    
+    function withdraw(
+        AccountStorage storage self,
+        address owner,
+        uint256 amount
+    ) external returns (bool) {
+        Account storage account = self.accounts[owner];
+        require(account.isActive, "Account not active");
+        require(amount <= account.balance + account.accruedInterest, "Insufficient balance");
+        
+        uint256 penalty = 0;
+        if (block.timestamp < account.lockEndTime) {
+            penalty = _calculateWithdrawalPenalty(amount, account);
+        }
+        
+        uint256 netWithdrawal = amount - penalty;
+        account.balance -= amount;
+        self.withdrawals[owner].push(netWithdrawal);
+        
+        emit WithdrawalProcessed(owner, netWithdrawal, penalty);
+        
+        return true;
+    }
+    
+    function _calculateInterestRate(
+        AccountType accountType,
+        uint256 lockDuration
+    ) private pure returns (uint256) {
+        uint256 baseRate = BASE_RATE;
+        
+        // Add bonus rate based on lock duration (in years)
+        uint256 durationBonus = (lockDuration * 100) / SECONDS_PER_YEAR;
+        
+        // Add bonus based on account type
+        uint256 typeBonus;
+        if (accountType == AccountType.FIXED_TERM) {
+            typeBonus = 200; // +2%
+        } else if (accountType == AccountType.LADDER_TERM) {
+            typeBonus = 300; // +3%
+        }
+        
+        return baseRate + durationBonus + typeBonus;
+    }
+    
+    function _calculateSimpleInterest(
+        uint256 principal,
+        uint256 rate,
+        uint256 timeElapsed
+    ) private pure returns (uint256) {
+        return (principal * rate * timeElapsed) / (BASIS_POINTS * SECONDS_PER_YEAR);
+    }
+    
+    function _calculateCompoundInterest(
+        uint256 principal,
+        uint256 rate,
+        uint256 timeElapsed
+    ) private pure returns (uint256) {
+        uint256 periods = timeElapsed / SECONDS_PER_YEAR;
+        if (periods == 0) return 0;
+        
+        uint256 ratePerPeriod = rate / BASIS_POINTS;
+        uint256 base = 100 + ratePerPeriod;
+        
+        uint256 compoundedAmount = principal;
+        for (uint256 i = 0; i < periods; i++) {
+            compoundedAmount = (compoundedAmount * base) / 100;
+        }
+        
+        return compoundedAmount - principal;
+    }
+    
+    function _calculateWithdrawalPenalty(
+        uint256 amount,
+        Account storage account
+    ) private view returns (uint256) {
+        uint256 timeRemaining = account.lockEndTime - block.timestamp;
+        uint256 penaltyRate = (timeRemaining * 1000) / SECONDS_PER_YEAR; // 0.1% per remaining month
+        
+        if (account.accountType == AccountType.FLEXIBLE_TERM) {
+            penaltyRate = penaltyRate / 2; // Half penalty for flexible terms
+        }
+        
+        return (amount * penaltyRate) / BASIS_POINTS;
+    }
+    
+    function getAccountDetails(
+        AccountStorage storage self,
+        address owner
+    ) external view returns (
+        uint256 balance,
+        uint256 accruedInterest,
+        uint256 lockEndTime,
+        bool isActive
+    ) {
+        Account storage account = self.accounts[owner];
+        return (
+            account.balance,
+            account.accruedInterest,
+            account.lockEndTime,
+            account.isActive
+        );
+    }
+    
+    function getRemainingLockTime(
+        AccountStorage storage self,
+        address owner
+    ) external view returns (uint256) {
+        Account storage account = self.accounts[owner];
+        if (block.timestamp >= account.lockEndTime) return 0;
+        return account.lockEndTime - block.timestamp;
+    }
+    
+    function getTransactionHistory(
+        AccountStorage storage self,
+        address owner
+    ) external view returns (uint256[] memory deposits, uint256[] memory withdrawals) {
+        return (self.deposits[owner], self.withdrawals[owner]);
+    }
 }
