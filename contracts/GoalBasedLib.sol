@@ -6,7 +6,7 @@ pragma solidity ^0.8.26;
  * @notice Library for managing goal-based savings targets and milestones
  * @dev Implements functionality for personal and group savings goals
  */
-library GoalBasedSavingsLib {
+library GoalBasedLib {
     
     enum GoalType { PERSONAL, GROUP, CHALLENGE }
     enum GoalStatus { ACTIVE, PAUSED, COMPLETED, CANCELLED }

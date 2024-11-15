@@ -5,7 +5,7 @@ pragma solidity ^0.8.26;
  * @title TimeLockedSavingsLib
  * @notice Library implementing time-locked savings functionality with interest mechanisms
  */
-library TimeLockedSavingsLib {
+library TimeLockedLib {
     
     enum AccountType { FIXED_TERM, FLEXIBLE_TERM, LADDER_TERM }
     

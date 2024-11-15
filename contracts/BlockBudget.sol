@@ -2,36 +2,19 @@
 pragma solidity ^0.8.26;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./ContributionLib.sol";
-import "./GoalBasedLib.sol";
 import "./TimeLockedLib.sol";
+import "./GoalBasedLib.sol";
+import "./ContributionLib.sol";
 
 /**
  * @title BlockBudget
  * @notice Main contract integrating all personal finance management features
  */
-contract BlockBudget is Ownable{
-    using ContributionLib for ContributionLib.ContributionData;
-    using GoalBasedLib for GoalBasedLib.GoalData;
-    using TimeLockedLib for TimeLockedLib.TimeLockedData;
-
-    // Libraries state data
-    ContributionLib.ContributionData private contributionData;
-    GoalBasedLib.GoalData private goalData;
-    TimeLockedLib.TimeLockedData private timeLockedData;
-
-    // User profile structure
-    struct UserProfile {
-        string username;
-        bytes32 emailHash;
-        address[] wallets;
-        string preferredCurrency;
-        uint8 privacySettings; // 0: PUBLIC, 1: PRIVATE, 2: FRIENDS_ONLY
-        string languagePreference;
-        string timeZone;
-        bool isActive;
-        mapping(address => bool) authorizedWallets;
-    }
+contract BlockBudget is Ownable(msg.sender) {
+    // Library storage
+    TimeLockedLib.AccountStorage private timeLockedStorage;
+    GoalBasedLib.GoalStorage private goalStorage;
+    ContributionLib.CampaignStorage private campaignStorage;
 
     // Budget structure
     struct Budget {
@@ -44,7 +27,7 @@ contract BlockBudget is Ownable{
         bool isActive;
     }
 
-    // Expense structure
+    // Expense and Income structures
     struct Expense {
         uint256 amount;
         string category;
@@ -55,7 +38,6 @@ contract BlockBudget is Ownable{
         uint256 recurringInterval;
     }
 
-    // Income structure
     struct Income {
         uint256 amount;
         string source;
@@ -66,52 +48,154 @@ contract BlockBudget is Ownable{
     }
 
     // Mappings
-    mapping(address => UserProfile) public userProfiles;
     mapping(address => Budget) public userBudgets;
     mapping(address => Expense[]) public userExpenses;
     mapping(address => Income[]) public userIncomes;
     mapping(address => mapping(address => bool)) public friendsList;
 
     // Events
-    event UserRegistered(address indexed userAddress, string username);
     event BudgetCreated(address indexed userAddress, uint256 totalBudget);
     event ExpenseRecorded(address indexed userAddress, uint256 amount, string category);
     event IncomeRecorded(address indexed userAddress, uint256 amount, string source);
-    event GoalLinked(address indexed userAddress, string goalName);
     event EmergencyTriggered(address indexed userAddress, string reason);
 
-    constructor() {}
-
-    // User Profile Management Functions
-    function registerUser(
-        string memory _username,
-        string memory _email,
-        string memory _preferredCurrency,
-        string memory _languagePreference,
-        string memory _timeZone
+    // Time-Locked Savings Functions
+    function createTimeLockedAccount(
+        TimeLockedLib.AccountType accountType,
+        TimeLockedLib.InterestType interestType,
+        uint256 lockDuration,
+        uint256 initialDeposit
     ) external {
-        require(!userProfiles[msg.sender].isActive, "User already registered");
-        
-        UserProfile storage newProfile = userProfiles[msg.sender];
-        newProfile.username = _username;
-        newProfile.emailHash = keccak256(abi.encodePacked(_email));
-        newProfile.preferredCurrency = _preferredCurrency;
-        newProfile.languagePreference = _languagePreference;
-        newProfile.timeZone = _timeZone;
-        newProfile.isActive = true;
-        
-        address;
-        initialWallet[0] = msg.sender;
-        newProfile.wallets = initialWallet;
-        newProfile.authorizedWallets[msg.sender] = true;
-        
-        emit UserRegistered(msg.sender, _username);
+        TimeLockedLib.createAccount(
+            timeLockedStorage,
+            msg.sender,
+            accountType,
+            interestType,
+            lockDuration,
+            initialDeposit
+        );
     }
 
-    function updatePrivacySettings(uint8 _setting) external {
-        require(_setting <= 2, "Invalid privacy setting");
-        require(userProfiles[msg.sender].isActive, "User not registered");
-        userProfiles[msg.sender].privacySettings = _setting;
+    function depositToTimeLockedAccount(uint256 amount) external {
+        TimeLockedLib.deposit(
+            timeLockedStorage,
+            msg.sender,
+            amount
+        );
+    }
+
+    function withdrawFromTimeLockedAccount(uint256 amount) external {
+        TimeLockedLib.withdraw(
+            timeLockedStorage,
+            msg.sender,
+            amount
+        );
+    }
+
+    function calculateTimeLockedInterest() external {
+        TimeLockedLib.calculateInterest(
+            timeLockedStorage,
+            msg.sender
+        );
+    }
+
+    // Goal-Based Savings Functions
+    function createSavingsGoal(
+        string memory name,
+        uint256 targetAmount,
+        uint256 deadline,
+        GoalBasedLib.GoalType goalType,
+        GoalBasedLib.SavingFrequency frequency,
+        uint256 minContributionAmount,
+        bool isFlexible,
+        bool autoContribute,
+        uint256 penaltyRate
+    ) external returns (bytes32) {
+        return GoalBasedLib.createGoal(
+            goalStorage,
+            name,
+            targetAmount,
+            deadline,
+            goalType,
+            frequency,
+            minContributionAmount,
+            isFlexible,
+            autoContribute,
+            penaltyRate
+        );
+    }
+
+    function addGoalMilestone(
+        bytes32 goalId,
+        string memory description,
+        uint256 targetAmount,
+        uint256 deadline,
+        uint256 rewardAmount
+    ) external returns (uint256) {
+        return GoalBasedLib.defineMilestone(
+            goalStorage,
+            goalId,
+            description,
+            targetAmount,
+            deadline,
+            rewardAmount
+        );
+    }
+
+    function checkGoalMilestone(bytes32 goalId, uint256 milestoneIndex) 
+        external 
+        returns (bool) 
+    {
+        return GoalBasedLib.checkMilestoneProgress(
+            goalStorage,
+            goalId,
+            milestoneIndex
+        );
+    }
+
+    function withdrawFromGoal(
+        bytes32 goalId,
+        uint256 amount,
+        bool isEmergency
+    ) external returns (uint256) {
+        return GoalBasedLib.processWithdrawal(
+            goalStorage,
+            goalId,
+            amount,
+            isEmergency
+        );
+    }
+
+    // Crowdfunding Campaign Functions
+    function createCampaign(
+        string memory name,
+        uint256 targetAmount,
+        uint256 duration
+    ) external returns (bytes32) {
+        return ContributionLib.createCampaign(
+            campaignStorage,
+            name,
+            targetAmount,
+            duration
+        );
+    }
+
+    function contributeToCompaign(bytes32 campaignId) 
+        external 
+        payable 
+        returns (bool) 
+    {
+        return ContributionLib.contribute(
+            campaignStorage,
+            campaignId
+        );
+    }
+
+    function endCampaign(bytes32 campaignId) external returns (bool) {
+        return ContributionLib.endCampaign(
+            campaignStorage,
+            campaignId
+        );
     }
 
     // Budget Management Functions
@@ -121,7 +205,6 @@ contract BlockBudget is Ownable{
         string[] memory _categories,
         uint256[] memory _limits
     ) external {
-        require(userProfiles[msg.sender].isActive, "User not registered");
         require(_categories.length == _limits.length, "Categories and limits mismatch");
         
         Budget storage newBudget = userBudgets[msg.sender];
@@ -138,170 +221,45 @@ contract BlockBudget is Ownable{
         emit BudgetCreated(msg.sender, _totalBudget);
     }
 
-    // Expense Tracking Functions
-    function recordExpense(
-        uint256 _amount,
-        string memory _category,
-        string memory _description,
-        string memory _attachmentHash,
-        bool _isRecurring,
-        uint256 _recurringInterval
-    ) external {
-        require(userProfiles[msg.sender].isActive, "User not registered");
-        require(userBudgets[msg.sender].isActive, "No active budget");
-        
-        Budget storage budget = userBudgets[msg.sender];
-        require(budget.categoryLimits[_category] >= 
-            budget.categorySpent[_category] + _amount, 
-            "Exceeds category limit"
-        );
-        
-        Expense memory newExpense = Expense({
-            amount: _amount,
-            category: _category,
-            date: block.timestamp,
-            description: _description,
-            attachmentHash: _attachmentHash,
-            isRecurring: _isRecurring,
-            recurringInterval: _recurringInterval
-        });
-        
-        userExpenses[msg.sender].push(newExpense);
-        budget.categorySpent[_category] += _amount;
-        
-        emit ExpenseRecorded(msg.sender, _amount, _category);
-    }
-
-    // Income Management Functions
-    function recordIncome(
-        uint256 _amount,
-        string memory _source,
-        string memory _category,
-        bool _isRecurring,
-        uint256 _recurringInterval
-    ) external {
-        require(userProfiles[msg.sender].isActive, "User not registered");
-        
-        Income memory newIncome = Income({
-            amount: _amount,
-            source: _source,
-            date: block.timestamp,
-            category: _category,
-            isRecurring: _isRecurring,
-            recurringInterval: _recurringInterval
-        });
-        
-        userIncomes[msg.sender].push(newIncome);
-        
-        emit IncomeRecorded(msg.sender, _amount, _source);
-    }
-
-    // Financial Goals Integration Functions
-    function createSavingsGoal(
-        string memory _goalName,
-        uint256 _targetAmount,
-        uint256 _deadline,
-        uint8 _goalType,
-        uint8 _savingFrequency,
-        uint256 _minContribution
-    ) external {
-        require(userProfiles[msg.sender].isActive, "User not registered");
-        
-        goalData.createGoal(
-            msg.sender,
-            _goalName,
-            _targetAmount,
-            _deadline,
-            _goalType,
-            _savingFrequency,
-            _minContribution
-        );
-        
-        emit GoalLinked(msg.sender, _goalName);
-    }
-
-    function createTimeLockedSavings(
-        uint8 _accountType,
-        uint256 _lockDuration,
-        uint8 _interestType,
-        uint256 _interestRate,
-        uint256 _minDeposit
-    ) external {
-        require(userProfiles[msg.sender].isActive, "User not registered");
-        
-        timeLockedData.createAccount(
-            msg.sender,
-            _accountType,
-            _lockDuration,
-            _interestType,
-            _interestRate,
-            _minDeposit
-        );
-    }
-
-    function createContributionGroup(
-        string memory _groupName,
-        uint8 _contributionType,
-        uint256 _minContribution,
-        uint256 _maxMembers,
-        uint8 _frequency,
-        uint256 _frequencyCount
-    ) external {
-        require(userProfiles[msg.sender].isActive, "User not registered");
-        
-        contributionData.createGroup(
-            msg.sender,
-            _groupName,
-            _contributionType,
-            _minContribution,
-            _maxMembers,
-            _frequency,
-            _frequencyCount
-        );
-    }
-
-    // Emergency Functions
-    function triggerEmergency(string memory _reason) external onlyOwner {
-        _pause();
-        emit EmergencyTriggered(msg.sender, _reason);
-    }
-
-    function resolveEmergency() external onlyOwner {
-        _unpause();
-    }
-
     // View Functions
-    function getUserProfile(address _user) external view returns (
-        string memory username,
-        string memory preferredCurrency,
-        uint8 privacySettings,
-        string memory languagePreference,
+    function getTimeLockedAccountDetails(address user) external view returns (
+        uint256 balance,
+        uint256 accruedInterest,
+        uint256 lockEndTime,
         bool isActive
     ) {
-        UserProfile storage profile = userProfiles[_user];
-        return (
-            profile.username,
-            profile.preferredCurrency,
-            profile.privacySettings,
-            profile.languagePreference,
-            profile.isActive
+        return TimeLockedLib.getAccountDetails(
+            timeLockedStorage,
+            user
         );
     }
 
-    function getBudgetSummary(address _user) external view returns (
-        uint256 timeframe,
-        uint256 totalBudget,
-        uint256 startDate,
-        uint256 endDate,
+    function getGoalDetails(bytes32 goalId) external view returns (
+        string memory name,
+        uint256 targetAmount,
+        uint256 currentAmount,
+        uint256 deadline,
+        GoalBasedLib.GoalStatus status,
+        uint256 milestoneCount
+    ) {
+        return GoalBasedLib.getGoalDetails(
+            goalStorage,
+            goalId
+        );
+    }
+
+    function getCampaignDetails(bytes32 campaignId) external view returns (
+        string memory name,
+        address owner,
+        uint256 targetAmount,
+        uint256 deadline,
+        uint256 totalContributed,
+        uint256 contributorCount,
         bool isActive
     ) {
-        Budget storage budget = userBudgets[_user];
-        return (
-            budget.timeframe,
-            budget.totalBudget,
-            budget.startDate,
-            budget.endDate,
-            budget.isActive
+        return ContributionLib.getCampaignDetails(
+            campaignStorage,
+            campaignId
         );
     }
 }
