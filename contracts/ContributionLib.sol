@@ -75,7 +75,7 @@ library ContributionLib {
     function contribute(
         CampaignStorage storage self,
         bytes32 campaignId
-    ) external payable returns (bool) {
+    ) external returns (bool) {
         Campaign storage campaign = self.campaigns[campaignId];
         require(campaign.isActive, "Campaign not active");
         require(block.timestamp < campaign.deadline, "Campaign has ended");
