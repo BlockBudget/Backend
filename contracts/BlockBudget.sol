@@ -9,15 +9,24 @@ import "./ContributionLib.sol";
 /**
  * @title BlockBudget
  * @notice Main contract integrating all personal finance management features
+ * @dev Enhanced with user profile management and contribution handling
  */
 contract BlockBudget is Ownable(msg.sender) {
-    // Library storage
+    
     TimeLockedLib.AccountStorage private timeLockedStorage;
     GoalBasedLib.GoalStorage private goalStorage;
     ContributionLib.CampaignStorage private campaignStorage;
 
-    // Budget structure
+    struct UserProfile {
+        string name;
+        address userAddress;
+        bool isRegistered;
+        uint256 registrationDate;
+    }
+
     struct Budget {
+        string userName;
+        address userAddress;
         uint256 timeframe;
         mapping(string => uint256) categoryLimits;
         mapping(string => uint256) categorySpent;
@@ -27,7 +36,6 @@ contract BlockBudget is Ownable(msg.sender) {
         bool isActive;
     }
 
-    // Expense and Income structures
     struct Expense {
         uint256 amount;
         string category;
@@ -47,25 +55,43 @@ contract BlockBudget is Ownable(msg.sender) {
         uint256 recurringInterval;
     }
 
-    // Mappings
+    mapping(address => UserProfile) public userProfiles;
     mapping(address => Budget) public userBudgets;
     mapping(address => Expense[]) public userExpenses;
     mapping(address => Income[]) public userIncomes;
     mapping(address => mapping(address => bool)) public friendsList;
 
-    // Events
-    event BudgetCreated(address indexed userAddress, uint256 totalBudget);
+    event UserRegistered(address indexed userAddress, string name, uint256 timestamp);
+    event BudgetCreated(address indexed userAddress, string userName, uint256 totalBudget);
     event ExpenseRecorded(address indexed userAddress, uint256 amount, string category);
     event IncomeRecorded(address indexed userAddress, uint256 amount, string source);
     event EmergencyTriggered(address indexed userAddress, string reason);
+    event ContributionReceived(bytes32 indexed campaignId, address contributor, uint256 amount);
 
-    // Time-Locked Savings Functions
+    modifier onlyRegisteredUser() {
+        require(userProfiles[msg.sender].isRegistered, "User not registered");
+        _;
+    }
+
+    function registerUser(string memory name) external {
+        require(!userProfiles[msg.sender].isRegistered, "User already registered");
+        require(bytes(name).length > 0, "Name cannot be empty");
+
+        UserProfile storage newProfile = userProfiles[msg.sender];
+        newProfile.name = name;
+        newProfile.userAddress = msg.sender;
+        newProfile.registrationDate = block.timestamp;
+        newProfile.isRegistered = true;
+
+        emit UserRegistered(msg.sender, name, block.timestamp);
+    }
+
     function createTimeLockedAccount(
         TimeLockedLib.AccountType accountType,
         TimeLockedLib.InterestType interestType,
         uint256 lockDuration,
         uint256 initialDeposit
-    ) external {
+    ) external onlyRegisteredUser {
         TimeLockedLib.createAccount(
             timeLockedStorage,
             msg.sender,
@@ -76,30 +102,6 @@ contract BlockBudget is Ownable(msg.sender) {
         );
     }
 
-    function depositToTimeLockedAccount(uint256 amount) external {
-        TimeLockedLib.deposit(
-            timeLockedStorage,
-            msg.sender,
-            amount
-        );
-    }
-
-    function withdrawFromTimeLockedAccount(uint256 amount) external {
-        TimeLockedLib.withdraw(
-            timeLockedStorage,
-            msg.sender,
-            amount
-        );
-    }
-
-    function calculateTimeLockedInterest() external {
-        TimeLockedLib.calculateInterest(
-            timeLockedStorage,
-            msg.sender
-        );
-    }
-
-    // Goal-Based Savings Functions
     function createSavingsGoal(
         string memory name,
         uint256 targetAmount,
@@ -110,7 +112,7 @@ contract BlockBudget is Ownable(msg.sender) {
         bool isFlexible,
         bool autoContribute,
         uint256 penaltyRate
-    ) external returns (bytes32) {
+    ) external onlyRegisteredUser returns (bytes32) {
         return GoalBasedLib.createGoal(
             goalStorage,
             name,
@@ -125,89 +127,46 @@ contract BlockBudget is Ownable(msg.sender) {
         );
     }
 
-    function addGoalMilestone(
-        bytes32 goalId,
-        string memory description,
-        uint256 targetAmount,
-        uint256 deadline,
-        uint256 rewardAmount
-    ) external returns (uint256) {
-        return GoalBasedLib.defineMilestone(
-            goalStorage,
-            goalId,
-            description,
-            targetAmount,
-            deadline,
-            rewardAmount
-        );
-    }
-
-    function checkGoalMilestone(bytes32 goalId, uint256 milestoneIndex) 
-        external 
-        returns (bool) 
-    {
-        return GoalBasedLib.checkMilestoneProgress(
-            goalStorage,
-            goalId,
-            milestoneIndex
-        );
-    }
-
-    function withdrawFromGoal(
-        bytes32 goalId,
-        uint256 amount,
-        bool isEmergency
-    ) external returns (uint256) {
-        return GoalBasedLib.processWithdrawal(
-            goalStorage,
-            goalId,
-            amount,
-            isEmergency
-        );
-    }
-
-    // Crowdfunding Campaign Functions
     function createCampaign(
         string memory name,
+        string memory description,
         uint256 targetAmount,
-        uint256 duration
-    ) external returns (bytes32) {
+        uint256 duration,
+        bool isPrivate
+    ) external onlyRegisteredUser returns (bytes32) {
         return ContributionLib.createCampaign(
             campaignStorage,
             name,
+            description,
             targetAmount,
-            duration
+            duration,
+            isPrivate
         );
     }
 
-    function contributeToCompaign(bytes32 campaignId) 
-        external 
-        payable 
-        returns (bool) 
-    {
-        return ContributionLib.contribute(
+    function contributeToCompaign(bytes32 campaignId) external payable onlyRegisteredUser returns (bool) {
+        require(msg.value > 0, "Contribution amount must be positive");
+        bool success = ContributionLib.contribute(
             campaignStorage,
             campaignId
         );
+        require(success, "Contribution failed");
+        emit ContributionReceived(campaignId, msg.sender, msg.value);
+        return true;
     }
 
-    function endCampaign(bytes32 campaignId) external returns (bool) {
-        return ContributionLib.endCampaign(
-            campaignStorage,
-            campaignId
-        );
-    }
-
-    // Budget Management Functions
     function createBudget(
         uint256 _timeframe,
         uint256 _totalBudget,
         string[] memory _categories,
         uint256[] memory _limits
-    ) external {
+    ) external onlyRegisteredUser {
         require(_categories.length == _limits.length, "Categories and limits mismatch");
+        UserProfile storage profile = userProfiles[msg.sender];
         
         Budget storage newBudget = userBudgets[msg.sender];
+        newBudget.userName = profile.name;
+        newBudget.userAddress = msg.sender;
         newBudget.timeframe = _timeframe;
         newBudget.totalBudget = _totalBudget;
         newBudget.startDate = block.timestamp;
@@ -218,10 +177,24 @@ contract BlockBudget is Ownable(msg.sender) {
             newBudget.categoryLimits[_categories[i]] = _limits[i];
         }
         
-        emit BudgetCreated(msg.sender, _totalBudget);
+        emit BudgetCreated(msg.sender, profile.name, _totalBudget);
     }
 
-    // View Functions
+    function getUserProfile(address user) external view returns (
+        string memory name,
+        address userAddress,
+        uint256 registrationDate,
+        bool isRegistered
+    ) {
+        UserProfile storage profile = userProfiles[user];
+        return (
+            profile.name,
+            profile.userAddress,
+            profile.registrationDate,
+            profile.isRegistered
+        );
+    }
+
     function getTimeLockedAccountDetails(address user) external view returns (
         uint256 balance,
         uint256 accruedInterest,
@@ -250,12 +223,14 @@ contract BlockBudget is Ownable(msg.sender) {
 
     function getCampaignDetails(bytes32 campaignId) external view returns (
         string memory name,
+        string memory description,
         address owner,
         uint256 targetAmount,
         uint256 deadline,
         uint256 totalContributed,
         uint256 contributorCount,
-        bool isActive
+        bool isActive,
+        bool isPrivate
     ) {
         return ContributionLib.getCampaignDetails(
             campaignStorage,
