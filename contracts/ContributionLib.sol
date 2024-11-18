@@ -18,6 +18,7 @@ library ContributionLib {
         uint256 contributorCount;
         bool isActive;
         bool isPrivate;
+        bool locked;
         mapping(address => bool) whitelist;
         mapping(address => uint256) contributions;
     }
@@ -26,6 +27,24 @@ library ContributionLib {
         mapping(bytes32 => Campaign) campaigns;
         mapping(address => bytes32[]) userCampaigns;
     }
+
+    uint256 private constant MAX_DURATION = 365 days;
+    uint256 private constant MIN_TARGET_AMOUNT = 0.01 ether;
+    uint256 private constant MAX_TARGET_AMOUNT = 10000 ether;
+    uint256 private constant MAX_BATCH_SIZE = 200;
+    
+    error InvalidAmount();
+    error InvalidDuration();
+    error CampaignNotFound();
+    error Unauthorized();
+    error CampaignNotActive();
+    error CampaignEnded();
+    error DeadlineNotReached();
+    error NotWhitelisted();
+    error ReentrantCall();
+    error NoContribution();
+    error BatchTooLarge();
+    error TransferFailed();
     
     event CampaignCreated(
         bytes32 indexed campaignId,
@@ -40,14 +59,8 @@ library ContributionLib {
     event ContributionMade(
         bytes32 indexed campaignId,
         address indexed contributor,
-        uint256 amount
-    );
-    
-    event CampaignEnded(
-        bytes32 indexed campaignId,
-        address indexed owner,
-        uint256 totalContributed,
-        bool goalMet
+        uint256 amount,
+        uint256 totalRaised
     );
     
     event AddressWhitelisted(
@@ -58,8 +71,32 @@ library ContributionLib {
     event FundsWithdrawn(
         bytes32 indexed campaignId,
         address indexed contributor,
+        uint256 amount,
+        uint256 remainingBalance
+    );
+
+    event ContributionRefunded(
+        bytes32 indexed campaignId,
+        address indexed contributor,
         uint256 amount
     );
+    
+    modifier campaignExists(CampaignStorage storage self, bytes32 campaignId) {
+        if(self.campaigns[campaignId].owner == address(0)) revert CampaignNotFound();
+        _;
+    }
+
+    modifier nonReentrant(Campaign storage campaign) {
+        if(campaign.locked) revert ReentrantCall();
+        campaign.locked = true;
+        _;
+        campaign.locked = false;
+    }
+
+    modifier onlyCampaignOwner(Campaign storage campaign) {
+        if(msg.sender != campaign.owner) revert Unauthorized();
+        _;
+    }
     
     function createCampaign(
         CampaignStorage storage self,
@@ -69,8 +106,8 @@ library ContributionLib {
         uint256 duration,
         bool isPrivate
     ) external returns (bytes32) {
-        require(targetAmount > 0, "Target amount must be positive");
-        require(duration > 0, "Duration must be positive");
+        if(targetAmount < MIN_TARGET_AMOUNT || targetAmount > MAX_TARGET_AMOUNT) revert InvalidAmount();
+        if(duration == 0 || duration > MAX_DURATION) revert InvalidDuration();
         
         bytes32 campaignId = keccak256(
             abi.encodePacked(name, block.timestamp, msg.sender)
@@ -103,40 +140,52 @@ library ContributionLib {
     function whitelistAddresses(
         CampaignStorage storage self,
         bytes32 campaignId,
-        address[] memory addresses
-    ) external {
+        address[] calldata addresses
+    ) external 
+        campaignExists(self, campaignId)
+        onlyCampaignOwner(self.campaigns[campaignId]) 
+    {
         Campaign storage campaign = self.campaigns[campaignId];
-        require(msg.sender == campaign.owner, "Only owner can whitelist addresses");
-        require(campaign.isPrivate, "Campaign is not private");
-        require(campaign.isActive, "Campaign not active");
+        if(!campaign.isPrivate) revert Unauthorized();
+        if(!campaign.isActive) revert CampaignNotActive();
+        if(addresses.length > MAX_BATCH_SIZE) revert BatchTooLarge();
         
         for (uint256 i = 0; i < addresses.length; i++) {
-            campaign.whitelist[addresses[i]] = true;
-            emit AddressWhitelisted(campaignId, addresses[i]);
+            address addr = addresses[i];
+            if(addr != address(0)) {
+                campaign.whitelist[addr] = true;
+                emit AddressWhitelisted(campaignId, addr);
+            }
         }
     }
     
     function contribute(
         CampaignStorage storage self,
         bytes32 campaignId
-    ) external returns (bool) {
+    ) external 
+        campaignExists(self, campaignId)
+        returns (bool) 
+    {
         Campaign storage campaign = self.campaigns[campaignId];
-        require(campaign.isActive, "Campaign not active");
-        require(block.timestamp < campaign.deadline, "Campaign has ended");
-        require(msg.value > 0, "Contribution must be positive");
+        if(!campaign.isActive) revert CampaignNotActive();
+        if(block.timestamp >= campaign.deadline) revert CampaignEnded();
+        if(msg.value == 0) revert InvalidAmount();
         
-        if (campaign.isPrivate) {
-            require(campaign.whitelist[msg.sender], "Address not whitelisted");
-        }
+        if(campaign.isPrivate && !campaign.whitelist[msg.sender]) revert NotWhitelisted();
         
-        if (campaign.contributions[msg.sender] == 0) {
+        if(campaign.contributions[msg.sender] == 0) {
             campaign.contributorCount++;
         }
         
         campaign.contributions[msg.sender] += msg.value;
         campaign.totalContributed += msg.value;
         
-        emit ContributionMade(campaignId, msg.sender, msg.value);
+        emit ContributionMade(
+            campaignId,
+            msg.sender,
+            msg.value,
+            campaign.totalContributed
+        );
         
         return true;
     }
@@ -144,24 +193,31 @@ library ContributionLib {
     function withdrawContribution(
         CampaignStorage storage self,
         bytes32 campaignId
-    ) external returns (bool) {
+    ) external 
+        campaignExists(self, campaignId)
+        nonReentrant(self.campaigns[campaignId])
+        returns (bool) 
+    {
         Campaign storage campaign = self.campaigns[campaignId];
-        require(!campaign.isActive || block.timestamp >= campaign.deadline, "Campaign still active");
-        require(campaign.totalContributed < campaign.targetAmount, "Target amount met");
+        if(campaign.isActive && block.timestamp < campaign.deadline) revert CampaignNotActive();
+        if(campaign.totalContributed >= campaign.targetAmount) revert Unauthorized();
         
-        uint256 contributionAmount = campaign.contributions[msg.sender];
-        require(contributionAmount > 0, "No contribution to withdraw");
+        uint256 amount = campaign.contributions[msg.sender];
+        if(amount == 0) revert NoContribution();
         
         campaign.contributions[msg.sender] = 0;
-        campaign.totalContributed -= contributionAmount;
+        campaign.totalContributed -= amount;
+        campaign.contributorCount--;
         
-        if (contributionAmount > 0) {
-            campaign.contributorCount--;
-        }
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        if(!success) revert TransferFailed();
         
-        payable(msg.sender).transfer(contributionAmount);
-        
-        emit FundsWithdrawn(campaignId, msg.sender, contributionAmount);
+        emit FundsWithdrawn(
+            campaignId,
+            msg.sender,
+            amount,
+            campaign.totalContributed
+        );
         
         return true;
     }
@@ -169,25 +225,56 @@ library ContributionLib {
     function endCampaign(
         CampaignStorage storage self,
         bytes32 campaignId
-    ) external returns (bool) {
+    ) external 
+        campaignExists(self, campaignId)
+        onlyCampaignOwner(self.campaigns[campaignId])
+        nonReentrant(self.campaigns[campaignId])
+        returns (bool) 
+    {
         Campaign storage campaign = self.campaigns[campaignId];
-        require(msg.sender == campaign.owner, "Only owner can end campaign");
-        require(block.timestamp >= campaign.deadline, "Campaign still active");
-        require(campaign.isActive, "Campaign already ended");
+        if(block.timestamp < campaign.deadline) revert DeadlineNotReached();
+        if(!campaign.isActive) revert CampaignNotActive();
         
         campaign.isActive = false;
-        
         bool goalMet = campaign.totalContributed >= campaign.targetAmount;
         
         if (goalMet) {
-            payable(campaign.owner).transfer(campaign.totalContributed);
+            (bool success, ) = payable(campaign.owner).call{value: campaign.totalContributed}("");
+            if(!success) revert TransferFailed();
         }
-        
-        emit CampaignEnded(campaignId, campaign.owner, campaign.totalContributed, goalMet);
         
         return goalMet;
     }
+
+    function refundContribution(
+        CampaignStorage storage self,
+        bytes32 campaignId,
+        address contributor
+    ) external 
+        campaignExists(self, campaignId)
+        onlyCampaignOwner(self.campaigns[campaignId])
+        nonReentrant(self.campaigns[campaignId])
+        returns (bool) 
+    {
+        Campaign storage campaign = self.campaigns[campaignId];
+        if(!campaign.isActive) revert CampaignNotActive();
+        
+        uint256 amount = campaign.contributions[contributor];
+        if(amount == 0) revert NoContribution();
+        
+        campaign.contributions[contributor] = 0;
+        campaign.totalContributed -= amount;
+        campaign.contributorCount--;
+        
+        (bool success, ) = payable(contributor).call{value: amount}("");
+        if(!success) revert TransferFailed();
+        
+        emit ContributionRefunded(campaignId, contributor, amount);
+        
+        return true;
+    }
     
+    // View functions remain unchanged
     function getCampaignDetails(
         CampaignStorage storage self,
         bytes32 campaignId

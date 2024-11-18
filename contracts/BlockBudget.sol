@@ -102,6 +102,48 @@ contract BlockBudget is Ownable(msg.sender) {
         );
     }
 
+    function deposit(
+        uint256 amount
+    ) external onlyRegisteredUser returns (bool) {
+        return TimeLockedLib.deposit(
+            timeLockedStorage,
+            msg.sender,
+            amount
+        );
+    }
+
+    function calculateInterest() external onlyRegisteredUser returns (uint256) {
+        return TimeLockedLib.calculateInterest(
+            timeLockedStorage,
+            msg.sender
+        );
+    }
+
+    function withdraw(uint256 amount) external onlyRegisteredUser returns (bool) {
+        return TimeLockedLib.withdraw(
+            timeLockedStorage,
+            msg.sender,
+            amount
+        );
+    }
+
+    function getRemainingLockTime() external view returns (uint256) {
+        return TimeLockedLib.getRemainingLockTime(
+            timeLockedStorage,
+            msg.sender
+        );
+    }
+
+    function getTransactionHistory() external view returns (
+        uint256[] memory deposits, 
+        uint256[] memory withdrawals
+    ) {
+        return TimeLockedLib.getTransactionHistory(
+            timeLockedStorage,
+            msg.sender
+        );
+    }
+
     function createSavingsGoal(
         string memory name,
         uint256 targetAmount,
@@ -124,6 +166,136 @@ contract BlockBudget is Ownable(msg.sender) {
             isFlexible,
             autoContribute,
             penaltyRate
+        );
+    }
+
+    function withdrawFromGoal(
+        bytes32 goalId,
+        uint256 amount
+    ) external onlyRegisteredUser returns (bool) {
+        bool success = GoalBasedLib.withdraw(
+            goalStorage,
+            goalId,
+            amount
+        );
+        require(success, "Withdrawal processing failed");
+
+        (bool sent, ) = payable(msg.sender).call{value: amount}("");
+        require(sent, "Failed to send Ether");
+        
+        return true;
+    }
+
+    function defineSavingsMilestone(
+        bytes32 goalId,
+        string calldata description,
+        uint256 targetAmount,
+        uint256 deadline,
+        uint256 rewardAmount
+    ) external onlyRegisteredUser returns (uint256) {
+        return GoalBasedLib.defineMilestone(
+            goalStorage,
+            goalId,
+            description,
+            targetAmount,
+            deadline,
+            rewardAmount
+        );
+    }
+
+    function checkMilestoneProgress(
+        bytes32 goalId,
+        uint256 milestoneIndex
+    ) external onlyRegisteredUser returns (bool) {
+        return GoalBasedLib.checkMilestoneProgress(
+            goalStorage,
+            goalId,
+            milestoneIndex
+        );
+    }
+
+    function calculateGoalProgress(
+        bytes32 goalId
+    ) external view returns (
+        uint256 percentageComplete,
+        uint256 remaining,
+        uint256 timeLeft
+    ) {
+        return GoalBasedLib.calculateProgress(
+            goalStorage,
+            goalId
+        );
+    }
+
+    function trackSavingRate(
+        bytes32 goalId
+    ) external view returns (uint256) {
+        return GoalBasedLib.trackSavingRate(
+            goalStorage,
+            goalId
+        );
+    }
+
+    function verifyGoalCompletion(
+        bytes32 goalId
+    ) external onlyRegisteredUser returns (bool) {
+        return GoalBasedLib.verifyCompletion(
+            goalStorage,
+            goalId
+        );
+    }
+
+    function modifySavingsGoal(
+        bytes32 goalId,
+        uint256 newTarget,
+        uint256 newDeadline
+    ) external onlyRegisteredUser {
+        GoalBasedLib.modifyGoal(
+            goalStorage,
+            goalId,
+            newTarget,
+            newDeadline
+        );
+    }
+
+    function triggerEmergencyAction(
+        bytes32 goalId,
+        string calldata actionType,
+        string calldata reason
+    ) external onlyRegisteredUser {
+        GoalBasedLib.emergencyAction(
+            goalStorage,
+            goalId,
+            actionType,
+            reason
+        );
+    }
+
+    function getMilestoneDetails(
+        bytes32 goalId,
+        uint256 milestoneIndex
+    ) external view returns (
+        string memory description,
+        uint256 targetAmount,
+        uint256 deadline,
+        bool isCompleted,
+        uint256 completedAt
+    ) {
+        return GoalBasedLib.getMilestone(
+            goalStorage,
+            goalId,
+            milestoneIndex
+        );
+    }
+
+    function getGoalContributionHistory(
+        bytes32 goalId,
+        address contributor
+    ) external view returns (uint256[] memory) {
+        return GoalBasedLib.getContributionHistory(
+            goalStorage,
+            goalId,
+            contributor
         );
     }
 
@@ -155,29 +327,53 @@ contract BlockBudget is Ownable(msg.sender) {
         return true;
     }
 
-    function createBudget(
-        uint256 _timeframe,
-        uint256 _totalBudget,
-        string[] memory _categories,
-        uint256[] memory _limits
+    function whitelistAddresses(
+        bytes32 campaignId,
+        address[] calldata addresses
     ) external onlyRegisteredUser {
-        require(_categories.length == _limits.length, "Categories and limits mismatch");
-        UserProfile storage profile = userProfiles[msg.sender];
-        
-        Budget storage newBudget = userBudgets[msg.sender];
-        newBudget.userName = profile.name;
-        newBudget.userAddress = msg.sender;
-        newBudget.timeframe = _timeframe;
-        newBudget.totalBudget = _totalBudget;
-        newBudget.startDate = block.timestamp;
-        newBudget.endDate = block.timestamp + _timeframe;
-        newBudget.isActive = true;
-        
-        for (uint i = 0; i < _categories.length; i++) {
-            newBudget.categoryLimits[_categories[i]] = _limits[i];
-        }
-        
-        emit BudgetCreated(msg.sender, profile.name, _totalBudget);
+        ContributionLib.whitelistAddresses(
+            campaignStorage,
+            campaignId,
+            addresses
+        );
+    }
+
+    function withdrawContribution(bytes32 campaignId) external onlyRegisteredUser returns (bool) {
+        return ContributionLib.withdrawContribution(
+            campaignStorage, 
+            campaignId
+        );
+    }
+
+    function endCampaign(bytes32 campaignId) external onlyRegisteredUser returns (bool) {
+        return ContributionLib.endCampaign(
+            campaignStorage, 
+            campaignId
+        );
+    }
+
+    function refundContribution(bytes32 campaignId, address contributor) external onlyRegisteredUser returns (bool) {
+        return ContributionLib.refundContribution(
+            campaignStorage, 
+            campaignId, 
+            contributor
+        );
+    }
+
+    function getContribution(bytes32 campaignId, address contributor) external view returns (uint256) {
+        return ContributionLib.getContribution(
+            campaignStorage, 
+            campaignId, 
+            contributor
+        );
+    }
+
+    function isWhitelisted(bytes32 campaignId, address contributor) external view returns (bool) {
+        return ContributionLib.isWhitelisted(
+            campaignStorage, 
+            campaignId, 
+            contributor
+        );
     }
 
     function getUserProfile(address user) external view returns (

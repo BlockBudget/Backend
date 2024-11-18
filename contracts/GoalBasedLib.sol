@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 /**
  * @title GoalBasedSavingsLib
  * @notice Library for managing goal-based savings targets and milestones
- * @dev Implements functionality for personal and group savings goals
+ * @dev Implements functionality for personal and group savings goals with optimized gas usage
  */
 library GoalBasedLib {
     
@@ -16,26 +16,26 @@ library GoalBasedLib {
         string description;
         uint256 targetAmount;
         uint256 deadline;
-        bool isCompleted;
         uint256 rewardAmount;
         uint256 completedAt;
+        bool isCompleted;   
     }
     
     struct Goal {
         string name;
+        address owner;   
         uint256 targetAmount;
         uint256 currentAmount;
         uint256 deadline;
         uint256 createdAt;
         uint256 minContributionAmount;
         uint256 penaltyRate;
+        uint256 milestoneCount;
         GoalType goalType;
         GoalStatus status;
         SavingFrequency frequency;
         bool isFlexible;
         bool autoContribute;
-        address owner;
-        uint256 milestoneCount;
         mapping(uint256 => Milestone) milestones;
         mapping(address => uint256[]) contributions;
         mapping(address => uint256[]) withdrawals;
@@ -85,6 +85,14 @@ library GoalBasedLib {
         uint256 amount,
         uint256 penalty
     );
+
+    event WithdrawalProcessed(
+        bytes32 indexed goalId,
+        address indexed withdrawer,
+        uint256 amount,
+        uint256 penalty,
+        uint256 timestamp
+    );
     
     event GoalCompleted(bytes32 indexed goalId, uint256 timestamp);
     
@@ -94,9 +102,21 @@ library GoalBasedLib {
         string reason
     );
     
+    error InvalidTargetAmount();
+    error InvalidDeadline();
+    error NotGoalOwner();
+    error InvalidMilestoneDeadline();
+    error GoalNotActive();
+    error InsufficientFunds();
+    error ZeroAddress();
+    error InsufficientBalance();
+    error WithdrawalAmountTooLow();
+    error GoalLocked();
+    error WithdrawalFailed();
+    
     function createGoal(
         GoalStorage storage self,
-        string memory name,
+        string calldata name,   
         uint256 targetAmount,
         uint256 deadline,
         GoalType goalType,
@@ -106,8 +126,9 @@ library GoalBasedLib {
         bool autoContribute,
         uint256 penaltyRate
     ) external returns (bytes32) {
-        require(targetAmount > 0, "Invalid target amount");
-        require(deadline > block.timestamp, "Invalid deadline");
+        if (targetAmount == 0) revert InvalidTargetAmount();
+        if (deadline <= block.timestamp) revert InvalidDeadline();
+        if (msg.sender == address(0)) revert ZeroAddress();
         
         bytes32 goalId = keccak256(
             abi.encodePacked(
@@ -118,7 +139,9 @@ library GoalBasedLib {
         );
         
         Goal storage newGoal = self.goals[goalId];
+        
         newGoal.name = name;
+        newGoal.owner = msg.sender;   
         newGoal.targetAmount = targetAmount;
         newGoal.deadline = deadline;
         newGoal.createdAt = block.timestamp;
@@ -128,11 +151,13 @@ library GoalBasedLib {
         newGoal.isFlexible = isFlexible;
         newGoal.autoContribute = autoContribute;
         newGoal.penaltyRate = penaltyRate;
-        newGoal.owner = msg.sender;
         newGoal.status = GoalStatus.ACTIVE;
         
+        unchecked {
+            self.totalGoals++;
+        }
+        
         self.userGoals[msg.sender].push(goalId);
-        self.totalGoals++;
         
         emit GoalCreated(
             goalId,
@@ -148,22 +173,26 @@ library GoalBasedLib {
     function defineMilestone(
         GoalStorage storage self,
         bytes32 goalId,
-        string memory description,
+        string calldata description,   
         uint256 targetAmount,
         uint256 deadline,
         uint256 rewardAmount
     ) external returns (uint256) {
         Goal storage goal = self.goals[goalId];
-        require(goal.owner == msg.sender, "Not goal owner");
-        require(deadline <= goal.deadline, "Invalid milestone deadline");
+        if (goal.owner != msg.sender) revert NotGoalOwner();
+        if (deadline > goal.deadline) revert InvalidMilestoneDeadline();
         
-        uint256 milestoneIndex = goal.milestoneCount++;
+        uint256 milestoneIndex = goal.milestoneCount;
         Milestone storage milestone = goal.milestones[milestoneIndex];
         
         milestone.description = description;
         milestone.targetAmount = targetAmount;
         milestone.deadline = deadline;
         milestone.rewardAmount = rewardAmount;
+         
+        unchecked {
+            goal.milestoneCount++;
+        }
         
         return milestoneIndex;
     }
@@ -197,10 +226,12 @@ library GoalBasedLib {
     ) {
         Goal storage goal = self.goals[goalId];
         
-        percentageComplete = (goal.currentAmount * 100) / goal.targetAmount;
-        remaining = goal.targetAmount - goal.currentAmount;
-        timeLeft = goal.deadline > block.timestamp ? 
-                  goal.deadline - block.timestamp : 0;
+        unchecked {
+            percentageComplete = (goal.currentAmount * 100) / goal.targetAmount;
+            remaining = goal.targetAmount - goal.currentAmount;
+            timeLeft = goal.deadline > block.timestamp ? 
+                      goal.deadline - block.timestamp : 0;
+        }
     }
     
     function trackSavingRate(
@@ -210,8 +241,10 @@ library GoalBasedLib {
         Goal storage goal = self.goals[goalId];
         if (block.timestamp <= goal.createdAt) return 0;
         
-        return (goal.currentAmount * 1e18) / 
-               (block.timestamp - goal.createdAt);
+        unchecked {
+            return (goal.currentAmount * 1e18) / 
+                   (block.timestamp - goal.createdAt);
+        }
     }
     
     function verifyCompletion(
@@ -235,8 +268,8 @@ library GoalBasedLib {
         uint256 newDeadline
     ) external {
         Goal storage goal = self.goals[goalId];
-        require(goal.owner == msg.sender, "Not goal owner");
-        require(goal.status == GoalStatus.ACTIVE, "Goal not active");
+        if (goal.owner != msg.sender) revert NotGoalOwner();
+        if (goal.status != GoalStatus.ACTIVE) revert GoalNotActive();
         
         if (newTarget > 0) goal.targetAmount = newTarget;
         if (newDeadline > block.timestamp) goal.deadline = newDeadline;
@@ -251,40 +284,45 @@ library GoalBasedLib {
         bool isEmergency
     ) external returns (uint256) {
         Goal storage goal = self.goals[goalId];
-        require(goal.owner == msg.sender, "Not goal owner");
-        require(amount <= goal.currentAmount, "Insufficient funds");
+        if (goal.owner != msg.sender) revert NotGoalOwner();
+        if (amount > goal.currentAmount) revert InsufficientFunds();
         
         uint256 penalty = 0;
         if (!isEmergency && goal.status == GoalStatus.ACTIVE) {
-            penalty = (amount * goal.penaltyRate) / 10000;
+            unchecked {
+                penalty = (amount * goal.penaltyRate) / 10000;
+            }
         }
         
-        uint256 netWithdrawal = amount - penalty;
-        goal.currentAmount -= amount;
-        goal.withdrawals[msg.sender].push(netWithdrawal);
-        
-        emit WithdrawalProcessed(
-            goalId,
-            msg.sender,
-            netWithdrawal,
-            penalty
-        );
-        
-        return netWithdrawal;
+        unchecked {
+            uint256 netWithdrawal = amount - penalty;
+            goal.currentAmount -= amount;
+            goal.withdrawals[msg.sender].push(netWithdrawal);
+            
+            emit WithdrawalProcessed(
+                goalId,
+                msg.sender,
+                netWithdrawal,
+                penalty
+            );
+            
+            return netWithdrawal;
+        }
     }
     
     function emergencyAction(
         GoalStorage storage self,
         bytes32 goalId,
-        string memory actionType,
-        string memory reason
+        string calldata actionType,   
+        string calldata reason       
     ) external {
         Goal storage goal = self.goals[goalId];
-        require(goal.owner == msg.sender, "Not goal owner");
+        if (goal.owner != msg.sender) revert NotGoalOwner();
         
-        if (keccak256(bytes(actionType)) == keccak256(bytes("FREEZE"))) {
+        bytes32 actionHash = keccak256(bytes(actionType));
+        if (actionHash == keccak256(bytes("FREEZE"))) {
             goal.status = GoalStatus.PAUSED;
-        } else if (keccak256(bytes(actionType)) == keccak256(bytes("CANCEL"))) {
+        } else if (actionHash == keccak256(bytes("CANCEL"))) {
             goal.status = GoalStatus.CANCELLED;
         }
         
@@ -341,4 +379,41 @@ library GoalBasedLib {
     ) external view returns (uint256[] memory) {
         return self.goals[goalId].contributions[contributor];
     }
+
+    function withdraw(
+    GoalStorage storage self,
+    bytes32 goalId,
+    uint256 amount
+) external returns (bool) {
+    Goal storage goal = self.goals[goalId];
+    
+    if (goal.owner != msg.sender) revert NotGoalOwner();
+    if (goal.status != GoalStatus.ACTIVE && goal.status != GoalStatus.COMPLETED) {
+        revert GoalLocked();
+    }
+    if (amount == 0) revert WithdrawalAmountTooLow();
+    if (amount > goal.currentAmount) revert InsufficientBalance();
+    
+     
+    uint256 penalty = 0;
+    if (goal.status == GoalStatus.ACTIVE) {
+         
+        penalty = (amount * 500) / 10000; // 500 basis points = 5%
+    }
+    
+    // Calculate net withdrawal amount
+    uint256 netAmount = amount - penalty;
+    goal.currentAmount -= amount;
+    goal.withdrawals[msg.sender].push(netAmount);
+    
+    emit WithdrawalProcessed(
+        goalId,
+        msg.sender,
+        netAmount,
+        penalty,
+        block.timestamp
+    );
+    
+    return true;
+}
 }
