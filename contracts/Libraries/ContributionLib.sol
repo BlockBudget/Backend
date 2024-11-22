@@ -107,7 +107,7 @@ library ContributionLib {
         bool isPrivate
     ) external returns (bytes32) {
         if(targetAmount < MIN_TARGET_AMOUNT || targetAmount > MAX_TARGET_AMOUNT) revert InvalidAmount();
-        if(duration == 0 || duration > MAX_DURATION) revert InvalidDuration();
+        if(duration == 0 || duration > MAX_DURATION / 1 days) revert InvalidDuration();
         
         bytes32 campaignId = keccak256(
             abi.encodePacked(name, block.timestamp, msg.sender)
@@ -118,7 +118,7 @@ library ContributionLib {
         newCampaign.description = description;
         newCampaign.owner = msg.sender;
         newCampaign.targetAmount = targetAmount;
-        newCampaign.deadline = block.timestamp + duration;
+        newCampaign.deadline = block.timestamp + (duration * 1 days);
         newCampaign.isActive = true;
         newCampaign.isPrivate = isPrivate;
         
@@ -221,6 +221,34 @@ library ContributionLib {
         
         return true;
     }
+
+    function withdrawContributions(
+        CampaignStorage storage self,
+        bytes32 campaignId
+    ) external 
+        campaignExists(self, campaignId)
+        onlyCampaignOwner(self.campaigns[campaignId])
+        nonReentrant(self.campaigns[campaignId]) 
+        returns (bool) 
+    {
+        Campaign storage campaign = self.campaigns[campaignId];
+        if (!campaign.isActive) revert CampaignNotActive();
+        if (campaign.totalContributed < campaign.targetAmount) revert Unauthorized(); // Target not met
+        
+        // Mark the campaign as inactive after withdrawal
+        campaign.isActive = false;
+
+        uint256 amount = campaign.totalContributed;
+        campaign.totalContributed = 0; // Reset the total contributions
+
+        (bool success, ) = payable(campaign.owner).call{value: amount}("");
+        if (!success) revert TransferFailed();
+
+        emit FundsWithdrawn(campaignId, msg.sender, amount, 0);
+
+        return true;
+    }
+
     
     function endCampaign(
         CampaignStorage storage self,
@@ -228,23 +256,36 @@ library ContributionLib {
     ) external 
         campaignExists(self, campaignId)
         onlyCampaignOwner(self.campaigns[campaignId])
-        nonReentrant(self.campaigns[campaignId])
+        nonReentrant(self.campaigns[campaignId]) 
         returns (bool) 
     {
         Campaign storage campaign = self.campaigns[campaignId];
-        if(block.timestamp < campaign.deadline) revert DeadlineNotReached();
-        if(!campaign.isActive) revert CampaignNotActive();
-        
-        campaign.isActive = false;
-        bool goalMet = campaign.totalContributed >= campaign.targetAmount;
-        
-        if (goalMet) {
-            (bool success, ) = payable(campaign.owner).call{value: campaign.totalContributed}("");
-            if(!success) revert TransferFailed();
+        if (!campaign.isActive) revert CampaignNotActive();
+
+        // If the target is reached before the deadline, allow early ending
+        if (campaign.totalContributed >= campaign.targetAmount) {
+            campaign.isActive = false;
+
+            uint256 amount = campaign.totalContributed;
+            campaign.totalContributed = 0;
+
+            (bool success, ) = payable(campaign.owner).call{value: amount}("");
+            if (!success) revert TransferFailed();
+
+            emit FundsWithdrawn(campaignId, campaign.owner, amount, 0);
+
+            return true;
         }
-        
-        return goalMet;
+
+        // If the deadline has passed, end the campaign without a successful target
+        if (block.timestamp >= campaign.deadline) {
+            campaign.isActive = false;
+            return false;
+        }
+
+        revert DeadlineNotReached();
     }
+
 
     function refundContribution(
         CampaignStorage storage self,
@@ -274,7 +315,6 @@ library ContributionLib {
         return true;
     }
     
-    // View functions remain unchanged
     function getCampaignDetails(
         CampaignStorage storage self,
         bytes32 campaignId
@@ -319,4 +359,19 @@ library ContributionLib {
         Campaign storage campaign = self.campaigns[campaignId];
         return !campaign.isPrivate || campaign.whitelist[contributor];
     }
+
+    function getUserCampaigns(
+        CampaignStorage storage self,
+        address user
+    ) external view returns (bytes32[] memory) {
+        return self.userCampaigns[user];
+    }
+
+    function getTotalContributions(
+        CampaignStorage storage self,
+        bytes32 campaignId
+    ) external view campaignExists(self, campaignId) returns (uint256) {
+        return self.campaigns[campaignId].totalContributed;
+    }
+
 }
