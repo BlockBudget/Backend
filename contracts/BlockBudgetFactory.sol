@@ -14,7 +14,8 @@ contract BlockBudgetFactory {
     error BudgetDoesNotExist();
     error InvalidAddress();
 
-    function createBlockBudget(string memory name) external returns (address) {
+    function createBlockBudget() external returns (
+        address newBudget) {
         if (userBudgets[msg.sender] != address(0)) revert BudgetAlreadyExists();
         if (msg.sender == address(0)) revert InvalidAddress();
 
@@ -22,13 +23,12 @@ contract BlockBudgetFactory {
 
         blockBudget.transferOwnership(msg.sender);
 
-        blockBudget.registerUser(name);
         userBudgets[msg.sender] = address(blockBudget);
         allBudgets.push(address(blockBudget));
 
         emit BlockBudgetDeployed(msg.sender, address(blockBudget), block.timestamp);
 
-        return address(blockBudget);
+        return address(blockBudget) ;
     }
     
     // function removeBlockBudget() external  {
@@ -53,10 +53,10 @@ contract BlockBudgetFactory {
     }
 
 
-    // function getUserBudget(address user) external view returns (address) {
-    //     if(user == address(0)) revert InvalidAddress();
-    //     return userBudgets[user];
-    // }
+    function getUserBudget(address user) external view returns (address) {
+        if(user == address(0)) revert InvalidAddress();
+        return userBudgets[user];
+    }
 
      
     // function getBudgetsPaginated(uint256 offset, uint256 limit) 

@@ -66,7 +66,7 @@ contract BlockBudget is Ownable(msg.sender) {
         userWallets[msg.sender].user = userProfiles[msg.sender];
     }
 
-    function deposit() external payable onlyRegisteredUser {
+    function deposit() external payable {
         WalletLibrary.deposit(userWallets);
     }
 
@@ -367,5 +367,9 @@ contract BlockBudget is Ownable(msg.sender) {
             campaignStorage,
             campaignId
         );
+    }
+    
+    receive() external payable {
+        WalletLibrary.deposit(userWallets);
     }
 }
