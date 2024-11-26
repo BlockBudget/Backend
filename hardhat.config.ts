@@ -4,7 +4,16 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.26",
+  solidity: {
+    version: "0.8.26",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      },
+      viaIR: true // Enable intermediate representation optimization
+    }
+  },
   networks: {
     "lisk-sepolia": {
       url: process.env.LISK_RPC_URL!,
