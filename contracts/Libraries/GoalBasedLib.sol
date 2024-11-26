@@ -398,10 +398,9 @@
 //     uint256 penalty = 0;
 //     if (goal.status == GoalStatus.ACTIVE) {
          
-//         penalty = (amount * 500) / 10000; // 500 basis points = 5%
+//         penalty = (amount * 500) / 10000;  
 //     }
     
-//     // Calculate net withdrawal amount
 //     uint256 netAmount = amount - penalty;
 //     goal.currentAmount -= amount;
 //     goal.withdrawals[msg.sender].push(netAmount);
