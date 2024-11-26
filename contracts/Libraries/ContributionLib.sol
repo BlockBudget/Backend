@@ -22,6 +22,20 @@ library ContributionLib {
         mapping(address => bool) whitelist;
         mapping(address => uint256) contributions;
     }
+
+    struct CampaignDetail {
+        bytes32 campaignId;
+        string name;
+        string description;
+        address owner;
+        uint256 targetAmount;
+        uint256 deadline;
+        uint256 totalContributed;
+        uint256 contributorCount;
+        bool isActive;
+        bool isPrivate;
+    }
+
     
     struct CampaignStorage {
         mapping(bytes32 => Campaign) campaigns;
@@ -262,7 +276,6 @@ library ContributionLib {
         Campaign storage campaign = self.campaigns[campaignId];
         if (!campaign.isActive) revert CampaignNotActive();
 
-        // If the target is reached before the deadline, allow early ending
         if (campaign.totalContributed >= campaign.targetAmount) {
             campaign.isActive = false;
 
@@ -277,7 +290,6 @@ library ContributionLib {
             return true;
         }
 
-        // If the deadline has passed, end the campaign without a successful target
         if (block.timestamp >= campaign.deadline) {
             campaign.isActive = false;
             return false;
@@ -374,4 +386,94 @@ library ContributionLib {
         return self.campaigns[campaignId].totalContributed;
     }
 
+    function getAllCampaignDetails(
+        CampaignStorage storage self
+    ) external view returns (CampaignDetail[] memory) {
+        uint256 totalCampaigns = 0;
+        
+        for (uint256 i = 0; i < type(uint160).max; i++) {
+            address userAddress = address(uint160(i));
+            bytes32[] memory userCampaigns = self.userCampaigns[userAddress];
+            totalCampaigns += userCampaigns.length;
+            
+            if (userCampaigns.length == 0 && userAddress > address(type(uint160).max - 1000)) {
+                break;
+            }
+        }
+        
+        CampaignDetail[] memory campaignDetails = new CampaignDetail[](totalCampaigns);
+        
+        uint256 index = 0;
+        for (uint256 i = 0; i < type(uint160).max; i++) {
+            address userAddress = address(uint160(i));
+            bytes32[] memory userCampaigns = self.userCampaigns[userAddress];
+            
+            for (uint256 j = 0; j < userCampaigns.length; j++) {
+                Campaign storage campaign = self.campaigns[userCampaigns[j]];
+                
+                campaignDetails[index] = CampaignDetail({
+                    campaignId: userCampaigns[j],
+                    name: campaign.name,
+                    description: campaign.description,
+                    owner: campaign.owner,
+                    targetAmount: campaign.targetAmount,
+                    deadline: campaign.deadline,
+                    totalContributed: campaign.totalContributed,
+                    contributorCount: campaign.contributorCount,
+                    isActive: campaign.isActive,
+                    isPrivate: campaign.isPrivate
+                });
+                
+                index++;
+            }
+            
+            if (userCampaigns.length == 0 && userAddress > address(type(uint160).max - 1000)) {
+                break;
+            }
+        }
+        
+        return campaignDetails;
+    }
+
+
+    function getAllWhitelistedAddresses(
+        CampaignStorage storage self,
+        bytes32 campaignId
+    ) external view 
+        campaignExists(self, campaignId)
+        returns (address[] memory whitelistedAddresses) 
+    {
+        Campaign storage campaign = self.campaigns[campaignId];
+        
+        if (!campaign.isPrivate) {
+            return new address[](0);
+        }
+        
+        uint256 whitelistCount = 0;
+        for (uint256 i = 0; i < type(uint160).max; i++) {
+            address addr = address(uint160(i));
+            if (campaign.whitelist[addr]) {
+                whitelistCount++;
+            }
+            if (addr > address(type(uint160).max - 1000)) {
+                break;
+            }
+        }
+        
+        whitelistedAddresses = new address[](whitelistCount);
+        
+        uint256 index = 0;
+        for (uint256 i = 0; i < type(uint160).max; i++) {
+            address addr = address(uint160(i));
+            if (campaign.whitelist[addr]) {
+                whitelistedAddresses[index] = addr;
+                index++;
+            }
+            if (addr > address(type(uint160).max - 1000) || index == whitelistCount) {
+                break;
+            }
+        }
+        
+        return whitelistedAddresses;
+    }
 }

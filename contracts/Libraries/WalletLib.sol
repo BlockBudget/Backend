@@ -95,14 +95,12 @@ library WalletLibrary {
         uint256 amount
     ) external {
         Wallet storage senderWallet = wallets[msg.sender];
-        Wallet storage recipientWallet = wallets[recipient];
         
         require(recipient != address(0), "Invalid recipient");
         require(amount > 0, "Transfer amount must be positive");
         require(senderWallet.balance >= amount, "Insufficient balance");
         
         senderWallet.balance -= amount;
-        recipientWallet.balance += amount;
         
         senderWallet.transactions.push(Transaction({
             sender: msg.sender,
@@ -111,6 +109,9 @@ library WalletLibrary {
             timestamp: block.timestamp,
             transactionType: "transfer"
         }));
+        
+        (bool success, ) = payable(recipient).call{value: amount}("");
+        require(success, "Transfer failed");
         
         emit Transfer(msg.sender, recipient, amount);
     }

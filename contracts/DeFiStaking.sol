@@ -19,8 +19,8 @@ interface ILendingPool {
 contract DefiStaking {
     address public immutable lendingPool;
     address public owner;
-    uint256 public constant USER_SHARE = 7000; // 70% (basis points)
-    uint256 public constant PROTOCOL_SHARE = 3000; // 30% (basis points)
+    uint256 public constant USER_SHARE = 9000; // 90%  
+    uint256 public constant PROTOCOL_SHARE = 1000; // 10%  
     uint256 public totalProtocolEarnings;
 
     struct Stake {
@@ -50,7 +50,6 @@ contract DefiStaking {
         userStake.amount += msg.value;
         userStake.depositTime = block.timestamp;
 
-        // Deposit to Aave
         ILendingPool(lendingPool).deposit(address(0), msg.value, address(this), 0);
 
         emit Deposited(msg.sender, msg.value);
@@ -60,7 +59,6 @@ contract DefiStaking {
         Stake storage userStake = stakes[msg.sender];
         require(userStake.amount > 0, "No funds staked");
 
-        // Withdraw from Aave
         uint256 totalBalance = address(this).balance;
         uint256 principal = userStake.amount;
         uint256 interest = totalBalance - principal;
@@ -68,10 +66,8 @@ contract DefiStaking {
         uint256 userInterest = (interest * USER_SHARE) / 10000;
         uint256 protocolInterest = interest - userInterest;
 
-        // Reset user stake
         userStake.amount = 0;
 
-        // Distribute funds
         totalProtocolEarnings += protocolInterest;
         payable(msg.sender).transfer(principal + userInterest);
 

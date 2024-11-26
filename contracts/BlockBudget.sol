@@ -61,8 +61,6 @@ contract BlockBudget is Ownable(msg.sender) {
 
     function registerUser(string memory name) external {
         WalletLibrary.registerUser(userProfiles, name);
-        
-        // Initialize the user's wallet after registration
         userWallets[msg.sender].user = userProfiles[msg.sender];
     }
 
@@ -70,12 +68,11 @@ contract BlockBudget is Ownable(msg.sender) {
         WalletLibrary.deposit(userWallets);
     }
 
-    function withdraw(uint256 amount) external onlyRegisteredUser {
+    function withdraw(uint256 amount) external {
         WalletLibrary.withdraw(userWallets, amount);
     }
 
-    function transfer(address recipient, uint256 amount) external onlyRegisteredUser {
-        require(userProfiles[recipient].isRegistered, "Recipient not registered");
+    function transfer(address recipient, uint256 amount) external {
         WalletLibrary.transfer(userWallets, recipient, amount);
     }
 
@@ -257,6 +254,20 @@ contract BlockBudget is Ownable(msg.sender) {
     //     );
     // }
 
+    // function getGoalDetails(bytes32 goalId) external view returns (
+    //     string memory name,
+    //     uint256 targetAmount,
+    //     uint256 currentAmount,
+    //     uint256 deadline,
+    //     GoalBasedLib.GoalStatus status,
+    //     uint256 milestoneCount
+    // ) {
+    //     return GoalBasedLib.getGoalDetails(
+    //         goalStorage,
+    //         goalId
+    //     );
+    // }
+
     function createCampaign(
         string memory name,
         string memory description,
@@ -338,19 +349,23 @@ contract BlockBudget is Ownable(msg.sender) {
         return ContributionLib.getUserCampaigns(campaignStorage, user);
     }
 
-    // function getGoalDetails(bytes32 goalId) external view returns (
-    //     string memory name,
-    //     uint256 targetAmount,
-    //     uint256 currentAmount,
-    //     uint256 deadline,
-    //     GoalBasedLib.GoalStatus status,
-    //     uint256 milestoneCount
-    // ) {
-    //     return GoalBasedLib.getGoalDetails(
-    //         goalStorage,
-    //         goalId
-    //     );
-    // }
+    function withdrawCampaignContributions(bytes32 campaignId) external onlyRegisteredUser returns (bool) {
+        return ContributionLib.withdrawContributions(
+            campaignStorage, 
+            campaignId
+        );
+    }
+
+    function getAllCampaigns() external view returns (ContributionLib.CampaignDetail[] memory) {
+        return ContributionLib.getAllCampaignDetails(campaignStorage);
+    }
+
+    function getAllWhitelistedAddresses(bytes32 campaignId) external view onlyRegisteredUser returns (address[] memory) {
+        return ContributionLib.getAllWhitelistedAddresses(
+            campaignStorage, 
+            campaignId
+        );
+    }
 
     function getCampaignDetails(bytes32 campaignId) external view returns (
         string memory name,
@@ -370,6 +385,17 @@ contract BlockBudget is Ownable(msg.sender) {
     }
     
     receive() external payable {
-        WalletLibrary.deposit(userWallets);
+        require(msg.value > 0, "Deposit amount must be positive");
+        
+        WalletLibrary.Wallet storage wallet = userWallets[msg.sender];
+        wallet.balance += msg.value;
+        
+        wallet.transactions.push(WalletLibrary.Transaction({
+            sender: address(0),
+            recipient: msg.sender,
+            amount: msg.value,
+            timestamp: block.timestamp,
+            transactionType: "direct_deposit"
+        }));
     }
 }
